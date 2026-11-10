@@ -1,0 +1,120 @@
+// End-to-end API test. Spins up the app on a random port with a temp datastore.
+const os = require('os'); const path = require('path'); const assert = require('assert');
+process.env.DATA_FILE = path.join(os.tmpdir(), `payments-test-${Date.now()}.json`);
+process.env.MOCK_ACH_SETTLE_MS = '300'; process.env.MOCK_PAYOUT_SETTLE_MS = '300';
+process.env.ADMIN_PASSWORD = 'test-pw';
+const app = require('../server');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+(async () => {
+  const srv = app.listen(0); const base = `http://127.0.0.1:${srv.address().port}`;
+  let cookie = '';
+  const call = async (method, p, body) => {
+    const r = await fetch(base + p, { method, headers: { 'Content-Type': 'application/json', cookie }, body: body && JSON.stringify(body) });
+    const sc = r.headers.get('set-cookie'); if (sc) cookie = sc.split(';')[0];
+    return { status: r.status, data: await r.json().catch(() => null) };
+  };
+  const pay = (method, details, amount = '50.00', extra = {}) => call('POST', '/api/payments', { amount, description: 'Test', method, details, customer: { name: 'T', email: 't@example.com' }, ...extra });
+  const card = { number: '4242424242424242', expMonth: '12', expYear: '2030', cvc: '123', name: 'Test' };
+  let r; let pass = 0; const ok = (c, m) => { assert.ok(c, m); pass++; console.log('  ✓', m); };
+
+  r = await pay('card', card); ok(r.status === 201 && r.data.status === 'succeeded' && r.data.methodSummary.last4 === '4242', 'card payment succeeds');
+  const raw = require('fs').readFileSync(process.env.DATA_FILE, 'utf8'); ok(!raw.includes('4242424242424242') && !raw.includes('"cvc"'), 'full card number / CVC never stored');
+  r = await pay('card', { ...card, number: '4242424242424241' }); ok(r.status === 400 && /invalid/i.test(r.data.error), 'Luhn failure rejected');
+  r = await pay('card', { ...card, expYear: '2020' }); ok(r.status === 400, 'expired card rejected');
+  r = await pay('card', { ...card, cvc: '12' }); ok(r.status === 400, 'bad CVC rejected');
+  r = await pay('card', { ...card, number: '378282246310005', cvc: '1234' }); ok(r.data.status === 'succeeded' && r.data.methodSummary.brand === 'amex', 'amex w/ 4-digit CVC succeeds');
+  r = await pay('card', { ...card, number: '4000000000000002' }); ok(r.status === 402 && r.data.status === 'failed', 'decline test card fails');
+  r = await pay('card', card, '13.13'); ok(r.data.status === 'failed', 'magic decline amount');
+  r = await pay('card', card, '-5'); ok(r.status === 400, 'negative amount rejected');
+  r = await pay('card', card, '1.234'); ok(r.status === 400, '3-decimal amount rejected');
+  r = await pay('apple_pay', {}, '20.00'); ok(r.data.status === 'succeeded', 'Apple Pay succeeds');
+  r = await pay('google_pay', {}, '30.00'); ok(r.data.status === 'succeeded', 'Google Pay succeeds');
+  r = await pay('paypal', { email: 'buyer@example.com' }, '10.00'); ok(r.data.status === 'succeeded', 'PayPal succeeds');
+  r = await pay('paypal', { email: 'decline@example.com' }); ok(r.data.status === 'failed', 'PayPal decline');
+  r = await pay('ach', { accountHolder: 'T', routingNumber: '110000001', accountNumber: '000123456789', mandate: true }); ok(r.status === 400, 'bad routing checksum rejected');
+  r = await pay('ach', { accountHolder: 'T', routingNumber: '110000000', accountNumber: '000123456789', mandate: true }, '100.00');
+  ok(r.data.status === 'processing', 'ACH starts processing'); const achId = r.data.id;
+  const achFail = (await pay('ach', { accountHolder: 'T', routingNumber: '110000000', accountNumber: '000111111116', mandate: true })).data.id;
+  r = await pay('crypto', { asset: 'SOL' }, '15.00'); ok(r.data.status === 'pending' && r.data.crypto.amount === '0.100000' && r.data.crypto.address.length === 44, 'crypto SOL quote + address');
+  const cId = r.data.id;
+  const qr = await fetch(`${base}/api/payments/${cId}/qr.png`); ok(qr.headers.get('content-type') === 'image/png', 'QR code PNG served');
+  r = await call('POST', `/api/payments/${cId}/simulate-crypto-received`); ok(r.data.status === 'succeeded' && r.data.crypto.txHash, 'crypto confirmed');
+  // ---- new methods ----
+  r = await pay('venmo', { username: '@jane-doe' }, '12.00'); ok(r.data.status === 'succeeded' && r.data.methodSummary.username === '@jane-doe', 'Venmo succeeds');
+  r = await pay('venmo', { username: 'jane' }); ok(r.status === 400, 'bad Venmo username rejected');
+  r = await pay('cashapp', { cashtag: '$janedoe' }, '8.00'); ok(r.data.status === 'succeeded', 'Cash App Pay succeeds');
+  r = await pay('cashapp', { cashtag: '$12345' }); ok(r.status === 400, 'all-digit $Cashtag rejected');
+  r = await pay('cashapp', { cashtag: '$declineme' }); ok(r.data.status === 'failed', 'Cash App decline');
+  r = await pay('zelle', {}, '40.00'); ok(r.data.status === 'pending' && /^ZL-[0-9A-F]{6}$/.test(r.data.zelle.memo), 'Zelle gives instructions + memo');
+  const zId = r.data.id;
+  r = await call('POST', `/api/payments/${zId}/simulate-received`); ok(r.data.status === 'succeeded' && r.data.zelle.confirmation, 'Zelle confirmed');
+  r = await pay('klarna', { email: 'k@example.com' }, '100.01');
+  ok(r.data.status === 'succeeded' && r.data.bnpl.schedule.length === 4 && r.data.bnpl.schedule.reduce((a, x) => a + x.amountCents, 0) === 10001 && r.data.bnpl.schedule[0].amountCents === 2501, 'Klarna pay-in-4 schedule sums exactly');
+  r = await pay('afterpay', { email: 'a@example.com' }, '2500.00'); ok(r.data.status === 'failed' && /between/.test(r.data.failureReason), 'Afterpay over limit declined');
+  r = await pay('afterpay', { email: 'a@example.com' }, '80.00'); ok(r.data.status === 'succeeded' && r.data.bnpl.schedule[1].status === 'scheduled', 'Afterpay succeeds');
+  const A = require('../lib/addresses');
+  r = await pay('crypto', { asset: 'BTC', network: 'bitcoin' }, '60.00');
+  ok(r.data.crypto.amount === '0.00100000' && A.validBitcoin(r.data.crypto.address) && r.data.crypto.uri.startsWith('bitcoin:bc1q'), 'BTC on-chain: valid bech32 address + BIP21 URI');
+  const btcId = r.data.id;
+  r = await pay('crypto', { asset: 'BTC', network: 'lightning' }, '6.00'); ok(r.data.crypto.sats === 10000 && r.data.crypto.invoice.startsWith('lnbc100000n1'), 'BTC Lightning invoice (10,000 sats)');
+  r = await pay('crypto', { asset: 'USDT', network: 'tron' }, '25.00'); ok(A.validTron(r.data.crypto.address) && r.data.crypto.amount === '25.00' && r.data.crypto.token, 'USDT on Tron');
+  r = await pay('crypto', { asset: 'USDT', network: 'ethereum' }, '25.00'); ok(/^0x/.test(r.data.crypto.address), 'USDT on Ethereum');
+  r = await pay('crypto', { asset: 'USDT', network: 'bitcoin' }); ok(r.status === 400, 'unsupported asset/network rejected');
+  r = await pay('crypto', { asset: 'LTC' }, '8.00'); ok(r.data.crypto.amount === '0.100000' && A.validLitecoin(r.data.crypto.address), 'Litecoin');
+  r = await call('POST', `/api/payments/${btcId}/simulate-received`); ok(r.data.status === 'succeeded', 'BTC confirmed');
+  const newIn = 1200 + 800 + 4000 + 10001 + 8000 + 6000;
+  r = await pay('card', card, '5.00', { idempotencyKey: 'k1' }); const r2 = await pay('card', card, '5.00', { idempotencyKey: 'k1' });
+  ok(r.data.id === r2.data.id, 'idempotency key prevents duplicate charge');
+  await sleep(400);
+  r = await call('GET', `/api/payments/${achId}`); ok(r.data.status === 'succeeded', 'ACH settles');
+  r = await call('GET', `/api/payments/${achFail}`); ok(r.data.status === 'failed', 'ACH return fails');
+
+  // Admin
+  r = await call('GET', '/api/admin/summary'); ok(r.status === 401, 'admin requires auth');
+  r = await call('POST', '/api/admin/login', { password: 'nope' }); ok(r.status === 401, 'wrong password rejected');
+  r = await call('POST', '/api/admin/login', { password: 'test-pw' }); ok(r.status === 200 && cookie.startsWith('admin_session='), 'login sets session cookie');
+  r = await call('GET', '/api/admin/summary');
+  // succeeded: 50 + 26.80? -> compute
+  const expectedIn = 5000 + 5000 /*amex*/ + 2000 + 3000 + 1000 + 10000 + 1500 + 500 + newIn;
+  ok(r.data.balance.incomingCents === expectedIn && r.data.balance.availableCents === expectedIn, `balance = ${expectedIn / 100}`);
+  ok(!JSON.stringify(r.data).includes('willFail'), 'internal fields stripped');
+  r = await call('POST', '/api/admin/payouts', { amount: '99999', method: 'paypal', destination: { email: 'x@example.com' } }); ok(r.status === 409, 'overdraw blocked');
+  r = await call('POST', '/api/admin/payouts', { amount: '40.00', method: 'bank', destination: { accountHolder: 'Acme', routingNumber: '110000000', accountNumber: '000123456789' } });
+  ok(r.status === 201 && r.data.status === 'pending' && r.data.destination.last4 === '6789' && !JSON.stringify(r.data).includes('000123456789'), 'bank payout pending, only last4 stored');
+  const poId = r.data.id;
+  r = await call('POST', '/api/admin/payouts', { amount: '25.00', method: 'paypal', destination: { email: 'jane@example.com' } }); ok(r.data.status === 'pending', 'PayPal payout');
+  r = await call('POST', '/api/admin/payouts', { amount: '30.00', method: 'crypto', destination: { asset: 'ETH', address: '0x12' } }); ok(r.status === 400, 'bad ETH address rejected');
+  r = await call('POST', '/api/admin/payouts', { amount: '30.00', method: 'crypto', destination: { asset: 'ETH', address: '0x' + 'ab'.repeat(20) } }); ok(r.data.destination.cryptoAmount === '0.010000', 'ETH payout');
+  r = await call('POST', '/api/admin/payouts', { amount: '10.00', method: 'paypal', destination: { email: 'fail@example.com' } });
+  // ---- new payout methods (small amounts; approved = 1+2+3+4+5+6+7 = $28 sent + some rejects) ----
+  const P = (method, destination, amount = '1.00') => call('POST', '/api/admin/payouts', { amount, method, destination });
+  r = await P('venmo', { username: '@jane-contractor' }); ok(r.status === 201 && r.data.destination.username === '@jane-contractor', 'Venmo payout');
+  r = await P('venmo', { username: 'jane' }); ok(r.status === 400, 'Venmo payout needs @username');
+  r = await P('cashapp', { cashtag: '$janecontracts' }, '2.00'); ok(r.status === 201, 'Cash App payout');
+  r = await P('cashapp', { cashtag: 'janecontracts' }); ok(r.status === 400, 'Cashtag needs $');
+  r = await P('cashapp', { cashtag: '$' + 'a'.repeat(21) }); ok(r.status === 400, 'Cashtag max 20 chars');
+  r = await P('zelle', { recipient: '(212) 555-0123' }, '3.00'); ok(r.status === 201 && r.data.destination.phone === '+12125550123', 'Zelle payout to phone (normalized)');
+  r = await P('zelle', { recipient: 'pay@example.com' }, '4.00'); ok(r.status === 201 && r.data.destination.email === 'pay@example.com', 'Zelle payout to email');
+  r = await P('zelle', { recipient: '555-0123' }); ok(r.status === 400, 'bad Zelle phone rejected');
+  r = await P('crypto', { asset: 'BTC', network: 'bitcoin', address: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq' }, '5.00'); ok(r.status === 201 && r.data.destination.cryptoAmount === '0.00008333', 'BTC bech32 payout');
+  r = await P('crypto', { asset: 'BTC', network: 'bitcoin', address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' }); ok(r.status === 201, 'BTC legacy P2PKH accepted');
+  r = await P('crypto', { asset: 'BTC', network: 'bitcoin', address: '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy' }); ok(r.status === 201, 'BTC P2SH accepted');
+  r = await P('crypto', { asset: 'BTC', network: 'bitcoin', address: 'bc1p5d7rjq7g6rdk2yhzks9smlaqtedr4dekq08ge8ztwac72sfr9rusxg3297' }); ok(r.status === 201, 'BTC taproot (bech32m) accepted');
+  r = await P('crypto', { asset: 'BTC', network: 'bitcoin', address: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdr' }); ok(r.status === 400, 'BTC bech32 bad checksum rejected');
+  r = await P('crypto', { asset: 'BTC', network: 'bitcoin', address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNb' }); ok(r.status === 400, 'BTC legacy bad checksum rejected');
+  r = await P('crypto', { asset: 'BTC', network: 'lightning', address: 'john@getalby.com' }); ok(r.status === 201, 'Lightning Address payout');
+  r = await P('crypto', { asset: 'USDT', network: 'tron', address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t' }); ok(r.status === 201, 'USDT Tron payout');
+  r = await P('crypto', { asset: 'USDT', network: 'tron', address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6u' }); ok(r.status === 400, 'bad Tron checksum rejected');
+  r = await P('crypto', { asset: 'LTC', network: 'litecoin', address: A.demoAddress('litecoin', 'x') }); ok(r.status === 201, 'LTC payout');
+  const extraOut = 100 + 200 + 300 + 400 + 500 + 100 + 100 + 100 + 100 + 100 + 100;
+  r = await call('GET', '/api/admin/summary'); ok(r.data.balance.availableCents === expectedIn - 4000 - 2500 - 3000 - 1000 - extraOut, 'pending payouts reserved from available');
+  await sleep(400);
+  r = await call('GET', '/api/admin/summary');
+  ok(r.data.payouts.find((p) => p.id === poId).status === 'paid', 'bank payout paid');
+  ok(r.data.payouts.filter((p) => p.status === 'failed').length === 1, 'failing payout fails');
+  ok(r.data.balance.availableCents === expectedIn - 4000 - 2500 - 3000 - extraOut && r.data.balance.paidOutCents === 9500 + extraOut, 'failed payout returns funds to balance');
+  r = await call('POST', '/api/admin/logout'); r = await call('GET', '/api/admin/summary'); ok(r.status === 401, 'logout ends session');
+
+  console.log(`\nAll ${pass} checks passed.`); srv.close(); process.exit(0);
+})().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

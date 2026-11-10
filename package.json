@@ -1,0 +1,23 @@
+{
+  "name": "payments-site",
+  "version": "1.0.0",
+  "description": "Test-mode payments site: checkout + payouts dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test/e2e.js",
+    "screenshots": "node scripts/screenshots.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.3.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.0"
+  }
+}

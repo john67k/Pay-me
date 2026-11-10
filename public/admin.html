@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payouts dashboard</title><link rel="stylesheet" href="/styles.css"><link rel="icon" href="/favicon.svg"></head>
+<body>
+<div class="testbanner" role="status">⚠️ TEST MODE - no real money. Demo site: payments and payouts are simulated.</div>
+<div class="topbar"><div class="logo"><div class="mark">$</div><span id="biz">Dashboard</span></div>
+  <div style="display:flex;gap:10px;align-items:center"><span class="badge">TEST MODE · no real money</span>
+  <a href="/" class="small" target="_blank">Open checkout ↗</a><button class="btn ghost" id="logout" hidden style="padding:7px 12px">Log out</button></div></div>
+
+<div class="login card" id="loginView" hidden>
+  <h1>Admin login</h1><p class="muted small">Payouts dashboard</p>
+  <form id="loginForm"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password">
+  <div class="alert error" id="loginErr" hidden></div><button class="btn block">Log in</button></form>
+</div>
+
+<div class="wrap" id="dash" hidden style="max-width:1200px">
+  <div class="stats">
+    <div class="card stat primary"><div class="label">Available balance</div><div class="val" id="sAvail">—</div></div>
+    <div class="card stat"><div class="label">Total received</div><div class="val" id="sIn">—</div></div>
+    <div class="card stat"><div class="label">Total paid out</div><div class="val" id="sOut">—</div></div>
+    <div class="card stat"><div class="label">Pending</div><div class="val" id="sPend" style="font-size:18px">—</div></div>
+  </div>
+  <div class="admin-grid">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">Transactions</h2>
+        <div class="tabs" style="margin:0" id="tabs"><button class="active" data-t="all">All</button><button data-t="in">Incoming</button><button data-t="out">Payouts</button></div></div>
+      <div style="overflow-x:auto;margin-top:10px"><table><thead><tr><th>Date</th><th>Type</th><th>Details</th><th>Method</th><th>Status</th><th class="nw" style="text-align:right">Amount</th></tr></thead>
+      <tbody id="rows"></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>Send a payout</h2>
+      <form id="poForm" novalidate>
+        <label>Send via</label>
+        <div class="mrow" id="poSeg">
+          <button type="button" class="method active" data-m="bank"><i class="lg" style="background:#0f766e">⌂</i>Bank</button>
+          <button type="button" class="method" data-m="zelle"><i class="lg" style="background:#6d1ed4">Z</i>Zelle</button>
+          <button type="button" class="method" data-m="paypal"><i class="lg" style="background:#003087">P</i>PayPal</button>
+          <button type="button" class="method" data-m="venmo"><i class="lg" style="background:#008cff">V</i>Venmo</button>
+          <button type="button" class="method" data-m="cashapp"><i class="lg" style="background:#00d64f">$</i>Cash App</button>
+          <button type="button" class="method" data-m="crypto"><i class="lg" style="background:#f7931a">₿</i>Crypto</button></div>
+        <label for="poAmount">Amount (USD)</label>
+        <div class="amount-input"><span>$</span><input id="poAmount" inputmode="decimal" placeholder="0.00"></div>
+        <div class="panel active" data-p="bank">
+          <label for="poHolder">Recipient name</label><input id="poHolder" placeholder="Acme Supplies LLC">
+          <div class="row"><div><label for="poRouting">Routing #</label><input id="poRouting" inputmode="numeric" maxlength="9" placeholder="110000000"></div>
+          <div><label for="poAcct">Account #</label><input id="poAcct" inputmode="numeric" maxlength="17" placeholder="000123456789"></div></div>
+        </div>
+        <div class="panel" data-p="zelle">
+          <label for="poZName">Recipient name</label><input id="poZName" placeholder="Jane Contractor">
+          <label for="poZelle">Zelle email or US mobile</label><input id="poZelle" placeholder="jane@example.com or (212) 555-0123">
+        </div>
+        <div class="panel" data-p="paypal">
+          <label for="poName">Recipient name</label><input id="poName" placeholder="Jane Contractor">
+          <label for="poEmail">PayPal email</label><input id="poEmail" type="email" placeholder="jane@example.com">
+        </div>
+        <div class="panel" data-p="venmo">
+          <label for="poVName">Recipient name</label><input id="poVName" placeholder="Jane Contractor">
+          <label for="poVenmo">Venmo @username</label><input id="poVenmo" placeholder="@jane-contractor">
+        </div>
+        <div class="panel" data-p="cashapp">
+          <label for="poCAName">Recipient name</label><input id="poCAName" placeholder="Jane Contractor">
+          <label for="poCashtag">$Cashtag</label><input id="poCashtag" placeholder="$janecontracts">
+        </div>
+        <div class="panel" data-p="crypto">
+          <div class="row"><div><label for="poAsset">Asset</label><select id="poAsset"></select></div>
+          <div><label for="poNet">Network</label><select id="poNet"></select></div></div>
+          <label for="poAddr" id="poAddrLabel">Wallet address</label><input id="poAddr" class="mono" placeholder="bc1q…">
+          <div class="small muted" id="poQuote"></div>
+          <label for="poCName">Recipient label (optional)</label><input id="poCName" placeholder="Dev wallet">
+        </div>
+        <label for="poNote">Note (optional)</label><input id="poNote" maxlength="200" placeholder="Invoice #88">
+        <div class="alert error" id="poErr" hidden></div><div class="alert ok" id="poOk" hidden></div>
+        <button class="btn block" id="poBtn">Review payout</button>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="confirm"><div class="modal" id="confirmBody"></div></div>
+<script src="/common.js"></script><script src="/admin.js"></script>
+</body></html>

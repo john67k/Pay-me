@@ -1,0 +1,16 @@
+# Render Blueprint: one-click deploy of the test-mode payments site.
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: pay-me
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      # Express 5 requires Node >= 18. Pin the 22 line (current LTS).
+      - key: NODE_VERSION
+        value: "22"
+      # Render fills this in on deploy; read it from the service's Environment tab.
+      - key: ADMIN_PASSWORD
+        generateValue: true
