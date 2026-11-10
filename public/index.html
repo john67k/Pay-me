@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Checkout</title><link rel="stylesheet" href="/styles.css"><link rel="icon" href="/favicon.svg"></head>
+<body>
+<div class="testbanner" role="status">⚠️ TEST MODE - no real money. Demo site: payments and payouts are simulated.</div>
+<div class="topbar"><div class="logo"><div class="mark">$</div><span id="biz">Checkout</span></div>
+  <div><span class="badge" id="modeBadge">TEST MODE · no real money</span></div></div>
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <h1>Pay <span id="bizName"></span></h1>
+      <p class="muted small" style="margin-top:0">Secure checkout. Enter the amount and what it's for.</p>
+      <label for="amount">Amount (USD)</label>
+      <div class="amount-input"><span>$</span><input id="amount" inputmode="decimal" placeholder="0.00" value="49.00" autocomplete="off"></div>
+      <div class="err" id="amountErr"></div>
+      <label for="description">Description</label>
+      <input id="description" placeholder="e.g. Invoice #1042, logo design" value="Website design deposit" maxlength="200">
+      <div class="row">
+        <div><label for="custName">Your name</label><input id="custName" placeholder="Jane Doe" autocomplete="name"></div>
+        <div><label for="custEmail">Email for receipt</label><input id="custEmail" type="email" placeholder="jane@example.com" autocomplete="email"></div>
+      </div>
+      <div style="margin-top:22px">
+        <div class="summary-line"><span class="muted" id="sumDesc">Website design deposit</span><span id="sumAmt">$49.00</span></div>
+        <div class="summary-total"><span>Total</span><span id="sumTotal">$49.00</span></div>
+      </div>
+      <div class="tests">
+        <b>Test mode tips</b><br>
+        Card success: <code>4242 4242 4242 4242</code> · decline: <code>4000 0000 0000 0002</code> · insufficient funds: <code>4000 0000 0000 9995</code><br>
+        Any future expiry, any 3‑digit CVC (4 for Amex). Amount <code>13.13</code> declines on any method.<br>
+        ACH routing <code>110000000</code>, account <code>000123456789</code> (fails: <code>000111111116</code>).<br>PayPal / Venmo / Cash App / Klarna / Afterpay: a handle or email containing “decline” fails.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Payment method</h2>
+      <div class="picker" id="methods">
+        <div class="mgroup"><div class="glabel">Cards &amp; wallets</div><div class="mrow">
+          <button type="button" class="method active" data-m="card"><i class="lg" style="background:#1a1f71">▭</i>Card</button>
+          <button type="button" class="method" data-m="apple_pay"><i class="lg" style="background:#000"></i>Apple Pay</button>
+          <button type="button" class="method" data-m="google_pay"><i class="lg" style="background:#fff;color:#4285f4;border:1px solid #dadce0">G</i>Google Pay</button></div></div>
+        <div class="mgroup"><div class="glabel">Bank</div><div class="mrow">
+          <button type="button" class="method" data-m="ach"><i class="lg" style="background:#0f766e">⌂</i>Bank (ACH)</button>
+          <button type="button" class="method" data-m="zelle"><i class="lg" style="background:#6d1ed4">Z</i>Zelle</button></div></div>
+        <div class="mgroup"><div class="glabel">Pay apps</div><div class="mrow">
+          <button type="button" class="method" data-m="paypal"><i class="lg" style="background:#003087">P</i>PayPal</button>
+          <button type="button" class="method" data-m="venmo"><i class="lg" style="background:#008cff">V</i>Venmo</button>
+          <button type="button" class="method" data-m="cashapp"><i class="lg" style="background:#00d64f">$</i>Cash App Pay</button></div></div>
+        <div class="mgroup"><div class="glabel">Buy now, pay later</div><div class="mrow">
+          <button type="button" class="method" data-m="klarna"><i class="lg" style="background:#ffb3c7;color:#000">K</i>Klarna</button>
+          <button type="button" class="method" data-m="afterpay"><i class="lg" style="background:#b2fce4;color:#000">A</i>Afterpay</button></div></div>
+        <div class="mgroup"><div class="glabel">Crypto</div><div class="mrow">
+          <button type="button" class="method" data-m="crypto" data-asset="BTC"><i class="lg" style="background:#f7931a">₿</i>Bitcoin</button>
+          <button type="button" class="method" data-m="crypto" data-asset="USDC"><i class="lg" style="background:#2775ca">$</i>Stablecoins</button>
+          <button type="button" class="method" data-m="crypto" data-asset="ETH"><i class="lg" style="background:#627eea">Ξ</i>ETH · SOL · LTC</button></div></div>
+      </div>
+
+      <form id="form" novalidate>
+      <!-- CARD -->
+      <div class="panel active" data-p="card">
+        <label for="ccName">Name on card</label><input id="ccName" autocomplete="cc-name" placeholder="Jane Doe">
+        <label for="ccNum">Card number</label>
+        <div class="card-input"><input id="ccNum" inputmode="numeric" autocomplete="cc-number" placeholder="1234 1234 1234 1234" maxlength="23"><span class="brand" id="ccBrand" hidden></span></div>
+        <div class="err" id="ccNumErr"></div>
+        <div class="row3">
+          <div><label for="ccExp">Expiry</label><input id="ccExp" inputmode="numeric" autocomplete="cc-exp" placeholder="MM / YY" maxlength="7"><div class="err" id="ccExpErr"></div></div>
+          <div><label for="ccCvc">CVC</label><input id="ccCvc" inputmode="numeric" autocomplete="cc-csc" placeholder="123" maxlength="4"><div class="err" id="ccCvcErr"></div></div>
+          <div><label for="ccZip">ZIP</label><input id="ccZip" autocomplete="postal-code" placeholder="10001" maxlength="10"></div>
+        </div>
+        <p class="small muted">🔒 Only the card brand and last 4 digits are stored.</p>
+      </div>
+      <div class="panel" data-p="apple_pay"><p class="muted small">Simulated Apple Pay sheet (no device wallet is charged).</p>
+        <button type="button" class="wallet-btn apple" id="applePayBtn"> Pay</button></div>
+      <div class="panel" data-p="google_pay"><p class="muted small">Simulated Google Pay sheet (no Google account is charged).</p>
+        <button type="button" class="wallet-btn google" id="googlePayBtn"><b style="color:#4285f4">G</b> Pay</button></div>
+      <!-- ACH -->
+      <div class="panel" data-p="ach">
+        <label for="achName">Account holder name</label><input id="achName" placeholder="Jane Doe">
+        <div class="row">
+          <div><label for="achRouting">Routing number</label><input id="achRouting" inputmode="numeric" maxlength="9" placeholder="110000000"><div class="err" id="achRoutingErr"></div></div>
+          <div><label for="achAcct">Account number</label><input id="achAcct" inputmode="numeric" maxlength="17" placeholder="000123456789"><div class="err" id="achAcctErr"></div></div>
+        </div>
+        <label for="achType">Account type</label>
+        <select id="achType"><option value="checking">Checking</option><option value="savings">Savings</option></select>
+        <label class="check"><input type="checkbox" id="achMandate"> I authorize a one-time debit from this account for the amount shown. Bank transfers usually take 1–4 business days to clear.</label>
+      </div>
+      <!-- ZELLE -->
+      <div class="panel" data-p="zelle">
+        <div class="alert info" style="margin-top:0"><b>How Zelle works here:</b> on the next screen you'll get our Zelle email and a memo code. Send the exact amount from your bank's app and include the code so we can match your payment.</div>
+      </div>
+      <!-- PAY APPS -->
+      <div class="panel" data-p="paypal"><p class="muted small">You'll approve in a simulated PayPal window.</p>
+        <button type="button" class="wallet-btn paypal" id="paypalBtn">PayPal</button></div>
+      <div class="panel" data-p="venmo"><p class="muted small">You'll approve in a simulated Venmo window.</p>
+        <button type="button" class="wallet-btn venmo" id="venmoBtn">venmo</button></div>
+      <div class="panel" data-p="cashapp"><p class="muted small">Scan a code or approve with your $Cashtag (simulated Cash App Pay).</p>
+        <button type="button" class="wallet-btn cashapp" id="cashappBtn"><b>$</b> Cash App Pay</button></div>
+      <!-- BNPL -->
+      <div class="panel" data-p="klarna"><div class="bnpl" id="klarnaPlan"></div>
+        <label for="klarnaEmail">Email for your Klarna account</label><input id="klarnaEmail" type="email" placeholder="you@example.com"></div>
+      <div class="panel" data-p="afterpay"><div class="bnpl" id="afterpayPlan"></div>
+        <label for="afterpayEmail">Email for your Afterpay account</label><input id="afterpayEmail" type="email" placeholder="you@example.com"></div>
+      <!-- CRYPTO -->
+      <div class="panel" data-p="crypto">
+        <label>Asset</label><div class="seg wrap" id="assetSeg"></div>
+        <label>Network</label><div class="seg wrap" id="netSeg"></div>
+        <p class="small muted" id="cryptoQuote"></p>
+        <p class="small muted">You'll get a deposit address and QR code on the next screen. Demo rates, simulated chain.</p>
+      </div>
+
+      <div class="alert error" id="formErr" hidden></div>
+      <button class="btn block" id="payBtn" type="submit">Pay $49.00</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="sheet"><div class="modal" id="sheetBody"></div></div>
+<script src="/common.js"></script><script src="/checkout.js"></script>
+</body></html>
